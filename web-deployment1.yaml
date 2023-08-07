@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: example
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-application-configmap
+  namespace: example
+data:
+  application.properties: |
+    spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+    spring.datasource.url=jdbc:mysql://mysql-service:3306/db1
+  init.sql: |
+    create schema if not exists `db1`;
+    create table if not exists db1.account (
+      id int auto_increment primary key,
+      username varchar(10) not null,
+      password varchar(200) not null,
+      unique index idx_username (username)
+    );
+    ALTER TABLE db1.account CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    create schema if not exists `db2`;
+    create table if not exists db2.account (
+      id int auto_increment primary key,
+      username varchar(10) not null,
+      password varchar(200) not null,
+      unique index idx_username (username)
+    );
+    ALTER TABLE db2.account CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+      create table if not exists db1.check_in (
+      id int auto_increment primary key,
+      user_id int not null,
+      check_in_time datetime not null,
+      foreign key (user_id) references db1.account(id)
+    );
+    create table if not exists db1.check_in_stats (
+      id int auto_increment primary key,
+      user_id int not null,
+      time_difference int not null,
+      foreign key (user_id) references db1.account(id)
+    );
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-application-secret
+  namespace: example
+type: Opaque
+data:
+  spring.datasource.password: MTIz
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  namespace: example
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql-container
+          image: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: web-application-secret
+                  key: spring.datasource.password
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          ports:
+            - containerPort: 3306
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: web-application-configmap
+            items:
+              - key: "init.sql"
+                path: "init.sql"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: example
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-application-deployment
+  namespace: example
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-application
+  template:
+    metadata:
+      labels:
+        app: web-application
+    spec:
+      containers:
+        - name: web-application-container
+          image: rtia/demo:1.1
+          env:
+            - name: spring.datasource.password
+              valueFrom:
+                secretKeyRef:
+                  name: web-application-secret
+                  key: spring.datasource.password
+          volumeMounts:
+            - name: config
+              mountPath: "/config"
+          ports:
+            - containerPort: 8080
+      volumes:
+        - name: config
+          configMap:
+            name: web-application-configmap
+            items:
+              - key: "application.properties"
+                path: "application.properties"
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-application-service
+  namespace: example
+spec:
+  selector:
+    app: web-application
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
