@@ -13,6 +13,7 @@ data:
   application.properties: |
     spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
     spring.datasource.url=jdbc:mysql://mysql-service:3306/db1
+    spring.datasource.password=123
   init.sql: |
     create schema if not exists `db1`;
     create table if not exists db1.account (
@@ -51,7 +52,7 @@ metadata:
   namespace: example
 type: Opaque
 data:
-  spring.datasource.password: cm9vdA==
+  spring.datasource.password: MTIz
 
 ---
 apiVersion: apps/v1
